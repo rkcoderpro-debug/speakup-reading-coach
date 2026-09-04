@@ -58,8 +58,60 @@ async function enterAfterPlacement(){hide($("placementOverlay"));show($("appShel
 
 function openPractice(p,mode="daily"){state.practicePassage=p;state.practiceMode=mode;$("practiceTitle").textContent=p.title||"Reading practice";$("practiceMeta").textContent=`${p.topic||"Reading"} / ${p.word_count||String(p.content||"").split(/\s+/).length} WORDS / ${p.level||state.profile.reading_level}`;$("practiceText").textContent=p.content;$("practiceRecordTitle").textContent="Nhấn để bắt đầu đọc";$("practiceRecordHint").textContent="Đọc toàn bộ đoạn. Bấm lần nữa để dừng.";resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));hide($("practiceResults"));hide($("wordDetail"));status("practiceStatus","");show($("practiceModal"));document.body.style.overflow="hidden"}
 function closePractice(){resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));hide($("practiceModal"));document.body.style.overflow=""}
-function tokens(text){return String(text).match(/\s+|[A-Za-zÀ-ÿ0-9]+(?:['’][A-Za-z]+)?|[^\sA-Za-zÀ-ÿ0-9]+/g)||[]}
-function highlight(text,results){let wi=0;$("practiceText").innerHTML=tokens(text).map(t=>{if(/^[A-Za-zÀ-ÿ0-9]+(?:['’][A-Za-z]+)?$/.test(t)){const r=results[wi++];return r?`<span class="read-word ${esc(r.status)}" data-scored="true" data-index="${wi-1}">${esc(t)}</span>`:esc(t)}return esc(t)}).join("");$("practiceText").querySelectorAll(".read-word").forEach(s=>s.onclick=()=>{const r=results[Number(s.dataset.index)];if(!r)return;$("wordDetailWord").textContent=r.word;$("wordDetailScore").textContent=`${r.score}/100`;$("wordDetailAdvice").textContent=[r.heard_as?`Gemini nghe gần giống “${r.heard_as}”.`:"",r.advice_vi||r.problem].filter(Boolean).join(" ")||"Từ này được đọc khá ổn.";show($("wordDetail"))})}
+
+function tokens(text) {
+  return String(text).match(
+    /\s+|[A-Za-zÀ-ÿ0-9]+(?:['’\-][A-Za-zÀ-ÿ0-9]+)*|[^\sA-Za-zÀ-ÿ0-9]+/g
+  ) || [];
+}
+
+function highlight(text, results) {
+  let wi = 0;
+
+  $("practiceText").innerHTML = tokens(text)
+    .map((t) => {
+      // Một word có thể chứa apostrophe hoặc dấu gạch nối:
+      // don't, student's, ultra-pure, fiber-optic, state-of-the-art
+      if (/^[A-Za-zÀ-ÿ0-9]+(?:['’\-][A-Za-zÀ-ÿ0-9]+)*$/.test(t)) {
+        const r = results[wi++];
+
+        return r
+          ? `<span
+              class="read-word ${esc(r.status)}"
+              data-scored="true"
+              data-index="${wi - 1}"
+            >${esc(t)}</span>`
+          : esc(t);
+      }
+
+      return esc(t);
+    })
+    .join("");
+
+  $("practiceText")
+    .querySelectorAll(".read-word")
+    .forEach((s) => {
+      s.onclick = () => {
+        const r = results[Number(s.dataset.index)];
+
+        if (!r) return;
+
+        $("wordDetailWord").textContent = r.word;
+        $("wordDetailScore").textContent = `${r.score}/100`;
+
+        $("wordDetailAdvice").textContent = [
+          r.heard_as
+            ? `Gemini nghe gần giống “${r.heard_as}”.`
+            : "",
+          r.advice_vi || r.problem
+        ]
+          .filter(Boolean)
+          .join(" ") || "Từ này được đọc khá ổn.";
+
+        show($("wordDetail"));
+      };
+    });
+}
 async function submitPractice(){if(!state.blob||!state.practicePassage){status("practiceStatus","Bạn chưa có bản ghi âm.");return}const btn=$("practiceSubmitBtn"),old=btn.textContent;btn.disabled=true;btn.textContent="Gemini đang nghe...";status("practiceStatus","Đang phân tích pronunciation, fluency và từng từ...");try{const p=state.practicePassage,d=await api("/api/assess",{method:"POST",body:JSON.stringify({passageId:p.id||null,referenceText:p.content,audioBase64:await b64(state.blob),mimeType:state.mimeType,durationSeconds:state.recordedDuration,mode:state.practiceMode,localDate:localDate()})});state.lastAssessment=d;highlight(p.content,d.assessment.words);$("resultOverall").textContent=d.assessment.overall_score;$("resultCircle").style.setProperty("--score",d.assessment.overall_score);$("resultPron").textContent=d.assessment.pronunciation_score;$("resultFlu").textContent=d.assessment.fluency_score;$("resultComp").textContent=d.assessment.completeness_score;$("resultInt").textContent=d.assessment.intonation_score;$("resultWpm").textContent=Math.round(d.wpm||0);$("resultSummary").textContent=d.assessment.summary_vi;$("resultPriority").textContent=d.assessment.main_priority_vi;$("resultTip").textContent=d.assessment.practice_tip_vi;$("resultRecognized").textContent=d.assessment.recognized_text||"-";hide($("practiceRecordedActions"));show($("practiceResults"));status("practiceStatus",`Chấm thành công bằng ${d.used_model}.`,true);await refreshProfile()}catch(e){status("practiceStatus",e.message)}finally{btn.disabled=false;btn.textContent=old}}
 function retryPractice(){$("practiceText").textContent=state.practicePassage.content;hide($("practiceResults"));hide($("wordDetail"));status("practiceStatus","");resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));$("practiceRecordTitle").textContent="Nhấn để đọc lại"}
 async function finishPractice(){closePractice();await refreshProfile();const name=document.querySelector(".page:not(.hidden)")?.id?.replace("page-","");if(name)await showPage(name)}
