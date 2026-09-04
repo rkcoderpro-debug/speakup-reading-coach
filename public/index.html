@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SpeakUp helps you practice reading English aloud with AI feedback on pronunciation, fluency and difficult words." />
+  <meta name="color-scheme" content="light dark" />
+  <title>SpeakUp - AI Reading Coach</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="loadingScreen" class="screen center" aria-live="polite">
+    <div class="logo" aria-hidden="true">S</div>
+    <div class="spinner" aria-hidden="true"></div>
+    <p>Đang khởi động SpeakUp...</p>
+  </div>
+
+  <section id="authScreen" class="screen auth hidden">
+    <div class="auth-copy">
+      <div class="brandline"><span class="logo small" aria-hidden="true">S</span><b>SpeakUp</b></div>
+      <div class="auth-message">
+        <span class="eyebrow">AI Reading Coach</span>
+        <h1>Đọc tiếng Anh rõ hơn mỗi ngày.</h1>
+        <p>Đọc thành tiếng, nhận feedback trực tiếp trên từng từ và luyện lại đúng phần bạn cần cải thiện.</p>
+      </div>
+      <div class="feature-list" aria-label="Core features">
+        <span>Reading Placement</span>
+        <span>Daily passages</span>
+        <span>Difficult Words</span>
+      </div>
+    </div>
+
+    <div class="auth-panel">
+      <div class="login-card">
+        <div class="logo" aria-hidden="true">S</div>
+        <h2>Bắt đầu luyện đọc</h2>
+        <p>Đăng nhập để lưu Reading Profile, bài luyện và lịch sử tiến bộ.</p>
+        <button id="googleLoginBtn" class="google-btn"><span class="google-mark">G</span><span>Continue with Google</span></button>
+        <div id="authError" class="error hidden" role="alert"></div>
+        <small>Google chỉ được dùng để đăng nhập. SpeakUp không truy cập Gmail.</small>
+      </div>
+    </div>
+  </section>
+
+  <div id="appShell" class="app hidden">
+    <aside class="sidebar">
+      <div class="side-brand">
+        <div class="logo small" aria-hidden="true">S</div>
+        <div><b>SpeakUp</b><span>Reading Coach</span></div>
+      </div>
+
+      <nav aria-label="Main navigation">
+        <button class="nav active" data-page="today"><b class="nav-key">T</b><span>Today</span></button>
+        <button class="nav" data-page="read"><b class="nav-key">R</b><span>Read</span></button>
+        <button class="nav" data-page="words"><b class="nav-key">W</b><span>Difficult Words</span></button>
+        <button class="nav" data-page="progress"><b class="nav-key">P</b><span>Progress</span></button>
+        <button class="nav" data-page="profile"><b class="nav-key">A</b><span>Profile</span></button>
+      </nav>
+
+      <div class="side-stat">
+        <span><small>Streak</small><b id="sideStreak">0</b> days</span>
+        <span><small>Level</small><b id="sideLevel">-</b></span>
+      </div>
+      <div class="side-foot">Gemini + Supabase</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <span id="pageEyebrow" class="eyebrow">Today</span>
+          <h1 id="pageTitle">Daily Reading</h1>
+        </div>
+        <div class="user-wrap">
+          <button id="userMenuBtn" class="user-chip" aria-haspopup="menu" aria-expanded="false">
+            <img id="headerAvatar" alt="" />
+            <span id="headerName">User</span>
+            <b aria-hidden="true">⌄</b>
+          </button>
+          <div id="userMenu" class="user-menu hidden" role="menu">
+            <small id="menuEmail"></small>
+            <button id="signOutBtn" role="menuitem">Sign out</button>
+          </div>
+        </div>
+      </header>
+
+      <div id="globalNotice" class="notice hidden" role="status"></div>
+
+      <section id="page-today" class="page">
+        <div class="hero-grid">
+          <div class="welcome">
+            <span id="welcomeDate" class="quiet-label">Today</span>
+            <h2 id="welcomeTitle">Good evening</h2>
+            <p id="welcomeSub">Your reading session is ready.</p>
+            <div class="level-inline"><small>Reading level</small><b id="todayLevel">-</b></div>
+          </div>
+          <div class="goal">
+            <div><span>Today's goal</span><b id="goalCount">0 / 3</b></div>
+            <div class="track" aria-hidden="true"><i id="goalBar"></i></div>
+            <small id="goalHint">Complete your daily passages</small>
+          </div>
+        </div>
+
+        <div id="dailyLoading" class="empty hidden" aria-live="polite">
+          <div class="spinner"></div>
+          <h3>Gemini đang chuẩn bị bài hôm nay...</h3>
+          <p>Bài được lưu vào database và sẽ được dùng lại khi bạn refresh.</p>
+        </div>
+
+        <div id="dailyEmpty" class="empty hidden">
+          <span class="empty-index">01</span>
+          <h3>Chưa có Daily Reading</h3>
+          <p>Tạo một bộ bài dựa trên Reading Level, roadmap và Difficult Words của bạn.</p>
+          <button id="generateDailyBtn" class="primary">Tạo bài hôm nay</button>
+        </div>
+
+        <div id="dailyContent" class="hidden">
+          <div class="section-head">
+            <div><h2 id="dailyFocus">-</h2><p id="dailyFocusNote"></p></div>
+          </div>
+          <div id="dailyPassages" class="passage-grid"></div>
+        </div>
+
+        <div class="bottom-grid">
+          <div class="metrics">
+            <h3>Reading metrics</h3>
+            <div class="metric-row"><span>Pronunciation</span><b id="homePron">0</b><i><em id="homePronBar"></em></i></div>
+            <div class="metric-row"><span>Fluency</span><b id="homeFlu">0</b><i><em id="homeFluBar"></em></i></div>
+            <div class="metric-row"><span>Intonation</span><b id="homeInt">0</b><i><em id="homeIntBar"></em></i></div>
+          </div>
+          <div class="roadmap-mini">
+            <span class="quiet-label">Today's roadmap focus</span>
+            <h3 id="roadmapTodayTitle">Your plan</h3>
+            <p id="roadmapTodayText">Complete placement to build your roadmap.</p>
+            <button class="text-btn" data-go-page="profile">View 14-day roadmap</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-read" class="page hidden">
+        <div class="generator">
+          <div>
+            <h2>Tạo bài đọc mới</h2>
+            <p>Chọn chủ đề và độ dài. Gemini tạo passage phù hợp với Reading Level hiện tại.</p>
+          </div>
+          <div class="gen-controls">
+            <label><span>Topic</span><select id="customTopic"><option>Technology</option><option>Science</option><option>Daily Life</option><option>University</option><option>History</option><option>Travel</option><option>Gaming</option><option>Business</option><option>Nature</option><option>Space</option><option>Random</option></select></label>
+            <label><span>Length</span><select id="customLength"><option value="quick">Quick / 30 sec</option><option value="normal" selected>Normal / ~1 min</option><option value="long">Long / 2-3 min</option></select></label>
+            <button id="generateCustomBtn" class="primary">Generate</button>
+          </div>
+        </div>
+
+        <div id="customResult" class="hidden">
+          <div class="section-head"><div><h2>Ready to read</h2></div></div>
+          <div id="customPassageCard"></div>
+        </div>
+
+        <div class="section-head"><div><h2>Your reading library</h2></div></div>
+        <div id="recentLibrary" class="library"></div>
+      </section>
+
+      <section id="page-words" class="page hidden">
+        <div class="section-head">
+          <div><h2>Difficult Words</h2><p>Từ có điểm thấp tự động quay lại trong các bài luyện sau.</p></div>
+        </div>
+        <div class="summary-grid">
+          <div><small>Need review</small><b id="weakCount">0</b></div>
+          <div><small>Improving</small><b id="improvingCount">0</b></div>
+          <div><small>Strong</small><b id="strongCount">0</b></div>
+        </div>
+        <div id="wordBank" class="word-grid"></div>
+      </section>
+
+      <section id="page-progress" class="page hidden">
+        <div class="section-head"><div><h2>Your improvement</h2><p>Chỉ tính các lần luyện sau Placement.</p></div></div>
+        <div class="score-grid">
+          <div class="big-score"><small>Overall</small><b id="progressOverall">0</b><span>/100</span></div>
+          <div class="stat"><small>Pronunciation</small><b id="progressPron">0</b></div>
+          <div class="stat"><small>Fluency</small><b id="progressFlu">0</b></div>
+          <div class="stat"><small>Intonation</small><b id="progressInt">0</b></div>
+          <div class="stat"><small>WPM</small><b id="progressWpm">0</b></div>
+        </div>
+        <div class="bottom-grid progress-lower">
+          <div class="history-panel"><h3>Reading history</h3><div id="attemptHistory" class="history"></div></div>
+          <div class="week-panel"><h3>This week</h3><div class="week-grid"><div><b id="weekAttempts">0</b><span>attempts</span></div><div><b id="weekWords">0</b><span>words read</span></div><div><b id="weekMinutes">0</b><span>minutes</span></div><div><b id="weekAvg">0</b><span>avg score</span></div></div></div>
+        </div>
+      </section>
+
+      <section id="page-profile" class="page hidden">
+        <div class="profile-grid">
+          <div class="profile-panel">
+            <div class="profile-head"><img id="profileAvatar" alt="" /><div><span class="quiet-label">Reading profile</span><h2 id="profileName">-</h2><p id="profileEmail">-</p></div></div>
+            <div class="profile-stats"><div><small>Reading Level</small><b id="profileLevel">-</b></div><div><small>Streak</small><b id="profileStreak">0 days</b></div><div><small>Total words</small><b id="profileWords">0</b></div></div>
+          </div>
+          <div class="settings">
+            <h3>Daily Reading</h3>
+            <label><span>Daily goal</span><select id="dailyGoalSelect"><option value="1">1 passage / day</option><option value="2">2 passages / day</option><option value="3">3 passages / day</option></select></label>
+            <div><small>Topics Gemini can use</small><div id="topicChecks" class="topics"></div></div>
+            <button id="saveProfileBtn" class="primary">Save preferences</button>
+          </div>
+        </div>
+        <div class="roadmap"><h2>14-day Reading Plan</h2><p id="roadmapSummary">-</p><div id="roadmapDays" class="roadmap-days"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <section id="placementOverlay" class="overlay hidden">
+    <div id="placementIntro" class="modal-card center-card">
+      <div class="logo" aria-hidden="true">S</div>
+      <span class="eyebrow">First-time setup</span>
+      <h1>Reading Placement</h1>
+      <p>Bạn sẽ đọc 4 đoạn ngắn từ dễ đến khó. SpeakUp chỉ đánh giá reading aloud: pronunciation, fluency, completeness và intonation.</p>
+      <button id="startPlacementBtn" class="primary large">Bắt đầu / khoảng 3 phút</button>
+      <small>Không đánh giá Grammar, Listening, Writing hay Conversation.</small>
+    </div>
+
+    <div id="placementTest" class="modal-card hidden">
+      <div class="placement-progress"><span id="placementProgressText">1 / 4</span><i><em id="placementProgressBar"></em></i></div>
+      <span id="placementDifficulty" class="tag">Warm-up</span>
+      <h2>Đọc đoạn sau thành tiếng</h2>
+      <div id="placementText" class="placement-text"></div>
+      <button id="placementListenBtn" class="listen">Listen to sample</button>
+      <div class="recorder">
+        <button id="placementRecordBtn" class="record" aria-label="Start or stop recording"><span>REC</span></button>
+        <div><b id="placementRecordTitle">Nhấn để bắt đầu</b><span id="placementRecordHint">Đọc tự nhiên, không cần thật nhanh.</span></div>
+        <strong id="placementTimer">00:00</strong>
+      </div>
+      <div id="placementRecordedActions" class="record-actions hidden"><audio id="placementAudio" controls></audio><button id="placementSubmitBtn" class="primary">Chấm bài này</button></div>
+      <div id="placementResult" class="placement-result hidden"><b id="placementScore">0</b><div><h3 id="placementVerdict">-</h3><p id="placementFeedback">-</p></div></div>
+      <button id="placementNextBtn" class="primary hidden">Tiếp tục</button>
+      <div id="placementStatus" class="error hidden" role="alert"></div>
+    </div>
+
+    <div id="placementFinish" class="modal-card center-card hidden">
+      <div class="finish-icon">Done</div>
+      <span class="eyebrow">Your reading profile</span>
+      <h1 id="finishLevel">Intermediate</h1>
+      <p id="finishSummary">Your roadmap is ready.</p>
+      <div class="finish-grid"><div><small>Pronunciation</small><b id="finishPron">0</b></div><div><small>Fluency</small><b id="finishFlu">0</b></div><div><small>Intonation</small><b id="finishInt">0</b></div><div><small>Completeness</small><b id="finishComp">0</b></div></div>
+      <button id="enterAppBtn" class="primary large">Bắt đầu Daily Reading</button>
+    </div>
+  </section>
+
+  <section id="practiceModal" class="practice-overlay hidden">
+    <div class="practice-window">
+      <div class="practice-head">
+        <button id="closePracticeBtn" class="back" aria-label="Close reading practice">Back</button>
+        <div><span id="practiceMeta" class="quiet-label">Reading practice</span><h2 id="practiceTitle">-</h2></div>
+        <button id="practiceListenBtn" class="listen">Listen</button>
+      </div>
+      <div class="practice-body">
+        <article id="practiceText" class="reading-text"></article>
+        <div id="wordDetail" class="word-detail hidden"><div><small>Selected word</small><b id="wordDetailWord">-</b></div><div><small>Score</small><b id="wordDetailScore">-</b></div><p id="wordDetailAdvice">-</p></div>
+        <hr />
+        <div class="recorder">
+          <button id="practiceRecordBtn" class="record big" aria-label="Start or stop recording"><span>REC</span></button>
+          <div><b id="practiceRecordTitle">Nhấn để bắt đầu đọc</b><span id="practiceRecordHint">Đọc toàn bộ đoạn. Bấm lần nữa để dừng.</span></div>
+          <strong id="practiceTimer">00:00</strong>
+        </div>
+        <div id="practiceRecordedActions" class="record-actions hidden"><audio id="practiceAudio" controls></audio><button id="practiceDiscardBtn" class="soft">Bỏ bản ghi</button><button id="practiceSubmitBtn" class="primary">Chấm Reading</button></div>
+        <div id="practiceStatus" class="notice hidden" role="status"></div>
+        <div id="practiceResults" class="results hidden">
+          <div class="result-top">
+            <div id="resultCircle" class="circle"><b id="resultOverall">0</b><small>/100</small></div>
+            <div class="result-grid"><div><small>Pronunciation</small><b id="resultPron">0</b></div><div><small>Fluency</small><b id="resultFlu">0</b></div><div><small>Completeness</small><b id="resultComp">0</b></div><div><small>Intonation</small><b id="resultInt">0</b></div><div><small>Reading speed</small><b><span id="resultWpm">0</span> WPM</b></div></div>
+          </div>
+          <div class="coach"><b>AI</b><div><small>Reading coach</small><p id="resultSummary">-</p></div></div>
+          <div class="advice-grid"><div><small>Ưu tiên</small><p id="resultPriority">-</p></div><div><small>Luyện lại</small><p id="resultTip">-</p></div></div>
+          <div class="recognized"><small>Gemini nghe được</small><p id="resultRecognized">-</p></div>
+          <div class="result-actions"><button id="retryPracticeBtn" class="soft">Đọc lại</button><button id="donePracticeBtn" class="primary">Hoàn tất</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

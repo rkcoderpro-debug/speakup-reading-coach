@@ -1,0 +1,19 @@
+{
+  "name": "speakup-reading-coach-v4",
+  "version": "4.0.0",
+  "private": true,
+  "description": "AI English reading-aloud coach with Gemini + Supabase Google Auth",
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "@google/genai": "2.21.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0"
+  }
+}
