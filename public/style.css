@@ -196,3 +196,47 @@ img{display:block}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 }
+
+/* =========================================
+   CLICKABLE READING HISTORY
+   ========================================= */
+
+.history-clickable {
+  cursor: pointer;
+  position: relative;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.history-clickable:hover {
+  background: rgba(255, 255, 255, 0.035);
+  transform: translateX(3px);
+}
+
+.history-clickable:focus-visible {
+  outline: 2px solid var(--primary, #7c8cff);
+  outline-offset: 3px;
+}
+
+.history-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.history-score small {
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 0;
+  color: #8791a1;
+
+  transition:
+    opacity 160ms ease;
+}
+
+.history-clickable:hover .history-score small,
+.history-clickable:focus-visible .history-score small {
+  opacity: 1;
+}
