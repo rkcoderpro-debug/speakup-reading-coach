@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
+import { installMultiplayer, roomCommand } from './multiplayer.js';
 
 dotenv.config();
 
@@ -193,6 +194,7 @@ function planFocusForDate(plan,date) { if(!Array.isArray(plan?.plan_json?.days))
 function sendApiError(res,error) {
   const status=getHttpStatus(error)||Number(error?.status)||500, detail=cleanErrorMessage(error);
   console.error(error);
+  if ([400,403,409,413].includes(status)) return res.status(status).json({error:detail});
   if(status===401)return res.status(401).json({error:"Phiên đăng nhập không hợp lệ hoặc đã hết hạn.",detail});
   if(status===429)return res.status(429).json({error:"Gemini Free Tier đang chạm giới hạn. Hãy thử lại sau.",detail});
   if(status===503||/high demand|UNAVAILABLE/i.test(detail))return res.status(503).json({error:"Gemini đang quá tải. App đã retry và thử model dự phòng.",detail});
@@ -204,10 +206,12 @@ app.get("/api/config",(_req,res)=>res.json({supabaseUrl:SUPABASE_URL,supabaseKey
 app.get("/api/health",(_req,res)=>res.json({ok:true,supabaseConfigured:configuredSupabase(),geminiConfigured:Boolean(process.env.GEMINI_API_KEY),primaryModel:PRIMARY_MODEL,fallbackModels:FALLBACK_MODELS,api:"GenerateContent"}));
 
 app.post("/api/assess",async(req,res)=>{
+  let roomClaim = null;
   try {
     const {user,db}=await requireUser(req);
-    const {passageId=null,referenceText,audioBase64,mimeType="audio/webm",durationSeconds=0,mode="daily",placementStep=null,localDate}=req.body||{};
-    const allowedModes=new Set(["placement","daily","custom","review"]);
+    let {passageId=null,referenceText,audioBase64,mimeType="audio/webm",durationSeconds=0,mode="daily",placementStep=null,localDate,roomId=null}=req.body||{};
+    const allowedModes=new Set(["placement","daily","custom","review","multiplayer"]);
+    if (mode === 'multiplayer') referenceText = 'Shared room passage';
     if(!referenceText||typeof referenceText!=="string"||referenceText.length>5000)return res.status(400).json({error:"Bài đọc không hợp lệ."});
     if(!audioBase64||typeof audioBase64!=="string")return res.status(400).json({error:"Không có dữ liệu ghi âm."});
     if(!allowedModes.has(mode))return res.status(400).json({error:"Reading mode không hợp lệ."});
@@ -215,17 +219,34 @@ app.post("/api/assess",async(req,res)=>{
     const allowedMime=new Set(["audio/webm","audio/wav","audio/mp3","audio/mpeg","audio/ogg","audio/opus","audio/aac","audio/m4a","audio/flac"]);
     if(!allowedMime.has(safeMime))return res.status(400).json({error:`Định dạng audio chưa hỗ trợ: ${safeMime}`});
     if(audioBase64.length>18000000)return res.status(413).json({error:"Bản ghi quá lớn. Hãy đọc đoạn ngắn hơn."});
-    const generated=await generateContentWithFallback({prompt:assessmentPrompt(referenceText),audioBase64,mimeType:safeMime,jsonMode:true});
+    if (mode === 'multiplayer') {
+      const claim = await roomCommand(user.id, 'claim', roomId);
+      roomClaim = { userId:user.id, roomId, lease:claim.lease };
+      referenceText = claim.room.passage;
+      passageId = null;
+    }
+    const generated=await generateContentWithFallback({prompt:assessmentPrompt(referenceText)+(mode==='multiplayer'?'\nAlso return audio_duration_seconds: the duration in seconds of the attached audio (including pauses). Estimate from the audio, never from reference text length.':''),audioBase64,mimeType:safeMime,jsonMode:true});
+    if (mode === 'multiplayer') {
+      durationSeconds = Number(extractJson(generated.text).audio_duration_seconds);
+      if (!Number.isFinite(durationSeconds) || durationSeconds < 1 || durationSeconds > 300) throw new Error('Không xác định được thời lượng audio. Hãy thử lại.');
+    }
     const assessment=normalizeAssessment(extractJson(generated.text));
     const duration=Math.max(0,Number(durationSeconds||0)), referenceWordCount=countWords(referenceText);
     const wpm=duration>=1?Math.round((referenceWordCount/(duration/60))*10)/10:0, date=safeDate(localDate);
     const row={user_id:user.id,passage_id:passageId||null,mode,placement_step:placementStep?Number(placementStep):null,reference_text:referenceText,recognized_text:assessment.recognized_text,audio_duration_seconds:Math.round(duration*100)/100,wpm,overall_score:assessment.overall_score,pronunciation_score:assessment.pronunciation_score,fluency_score:assessment.fluency_score,completeness_score:assessment.completeness_score,intonation_score:assessment.intonation_score,summary_vi:assessment.summary_vi,main_priority_vi:assessment.main_priority_vi,practice_tip_vi:assessment.practice_tip_vi,words:assessment.words};
-    const {data:saved,error:saveError}=await db.from("reading_attempts").insert(row).select().single(); if(saveError)throw saveError;
-    await updateWordProgress(db,user.id,assessment.words,date);
-    if(mode!=="placement")await refreshProfileMetrics(db,user.id,date,referenceWordCount,duration);
+    let saved;
+    if (roomClaim) saved = await roomCommand(user.id,'complete',roomId,{...row,lease:roomClaim.lease});
+    else {const result=await db.from("reading_attempts").insert(row).select().single();if(result.error)throw result.error;saved=result.data;}
+    roomClaim = null;
+    // A saved submission remains successful even if derived learning metrics fail.
+    try { await updateWordProgress(db,user.id,assessment.words,date);
+      if(mode!=="placement")await refreshProfileMetrics(db,user.id,date,referenceWordCount,duration);
+    } catch (e) { console.error('Learning metrics update failed',e); }
     res.json({ok:true,attempt:saved,assessment,wpm,used_model:generated.usedModel,fallback_used:generated.fallbackUsed,note:"Điểm là ước lượng AI để luyện reading aloud, không phải chứng chỉ chuẩn hóa."});
-  } catch(error){sendApiError(res,error);}
+  } catch(error){if(roomClaim)await roomCommand(roomClaim.userId,'fail',roomClaim.roomId,{lease:roomClaim.lease}).catch(console.error);sendApiError(res,error);}
 });
+
+installMultiplayer(app, requireUser);
 
 app.post("/api/placement/finish",async(req,res)=>{
   try {
