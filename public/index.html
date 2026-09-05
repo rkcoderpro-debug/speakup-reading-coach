@@ -6,35 +6,50 @@
   <meta name="description" content="SpeakUp helps you practice reading English aloud with AI feedback on pronunciation, fluency and difficult words." />
   <meta name="color-scheme" content="light dark" />
   <title>SpeakUp - AI Reading Coach</title>
+  <link rel="icon" type="image/png" href="/assets/app-icon.png" />
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
-  <div id="loadingScreen" class="screen center" aria-live="polite">
-    <div class="logo" aria-hidden="true">S</div>
+<body data-theme="dark">
+  <div id="loadingScreen" class="screen center loading-screen" aria-live="polite">
+    <img class="loading-brand" src="/assets/logo-wordmark.png" alt="SpeakUp" />
     <div class="spinner" aria-hidden="true"></div>
     <p>Đang khởi động SpeakUp...</p>
   </div>
 
   <section id="authScreen" class="screen auth hidden">
     <div class="auth-copy">
-      <div class="brandline"><span class="logo small" aria-hidden="true">S</span><b>SpeakUp</b></div>
-      <div class="auth-message">
-        <span class="eyebrow">AI Reading Coach</span>
-        <h1>Đọc tiếng Anh rõ hơn mỗi ngày.</h1>
-        <p>Đọc thành tiếng, nhận feedback trực tiếp trên từng từ và luyện lại đúng phần bạn cần cải thiện.</p>
-      </div>
-      <div class="feature-list" aria-label="Core features">
-        <span>Reading Placement</span>
-        <span>Daily passages</span>
-        <span>Difficult Words</span>
+      <div class="auth-copy-inner">
+        <div class="brandline">
+          <img class="brand-mark small-mark" src="/assets/logomark.png" alt="SpeakUp logo" />
+          <img class="brand-wordmark" src="/assets/logo-wordmark.png" alt="SpeakUp" />
+        </div>
+
+        <div class="auth-message">
+          <span class="eyebrow">AI Reading Coach</span>
+          <h1>Read English aloud with calm, clear feedback.</h1>
+          <p>SpeakUp focuses on one thing: helping you improve reading aloud through pronunciation, fluency, intonation, difficult words, and a daily reading habit.</p>
+          <div class="feature-list" aria-label="Core features">
+            <span>Reading Placement</span>
+            <span>Daily passages</span>
+            <span>Clickable feedback</span>
+          </div>
+        </div>
+
+        <div class="auth-visual-card">
+          <img class="auth-hero" src="/assets/hero-visual.png" alt="SpeakUp hero visual" />
+          <div class="auth-visual-copy">
+            <b>A brighter route to better reading.</b>
+            <p>Save reading history, review difficult words, and keep improving with a personalized plan.</p>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="auth-panel">
       <div class="login-card">
-        <div class="logo" aria-hidden="true">S</div>
+        <img class="panel-brand" src="/assets/app-icon.png" alt="SpeakUp app icon" />
         <h2>Bắt đầu luyện đọc</h2>
-        <p>Đăng nhập để lưu Reading Profile, bài luyện và lịch sử tiến bộ.</p>
+        <p>Đăng nhập để lưu Reading Profile, bài luyện, lịch sử tiến bộ và roadmap cá nhân.</p>
         <button id="googleLoginBtn" class="google-btn"><span class="google-mark">G</span><span>Continue with Google</span></button>
         <div id="authError" class="error hidden" role="alert"></div>
         <small>Google chỉ được dùng để đăng nhập. SpeakUp không truy cập Gmail.</small>
@@ -45,8 +60,11 @@
   <div id="appShell" class="app hidden">
     <aside class="sidebar">
       <div class="side-brand">
-        <div class="logo small" aria-hidden="true">S</div>
-        <div><b>SpeakUp</b><span>Reading Coach</span></div>
+        <img class="brand-mark" src="/assets/logomark.png" alt="SpeakUp logo" />
+        <div>
+          <img class="brand-wordmark" src="/assets/logo-wordmark.png" alt="SpeakUp" />
+          <span>Reading Coach</span>
+        </div>
       </div>
 
       <nav aria-label="Main navigation">
@@ -70,15 +88,22 @@
           <span id="pageEyebrow" class="eyebrow">Today</span>
           <h1 id="pageTitle">Daily Reading</h1>
         </div>
-        <div class="user-wrap">
-          <button id="userMenuBtn" class="user-chip" aria-haspopup="menu" aria-expanded="false">
-            <img id="headerAvatar" alt="" />
-            <span id="headerName">User</span>
-            <b aria-hidden="true">⌄</b>
-          </button>
-          <div id="userMenu" class="user-menu hidden" role="menu">
-            <small id="menuEmail"></small>
-            <button id="signOutBtn" role="menuitem">Sign out</button>
+        <div class="topbar-actions">
+          <div class="theme-switch" aria-label="Appearance">
+            <button type="button" class="theme-btn" data-theme-choice="light">Light</button>
+            <button type="button" class="theme-btn" data-theme-choice="dark">Dark</button>
+            <button type="button" class="theme-btn" data-theme-choice="glass">Liquid Glass</button>
+          </div>
+          <div class="user-wrap">
+            <button id="userMenuBtn" class="user-chip" aria-haspopup="menu" aria-expanded="false">
+              <img id="headerAvatar" alt="" />
+              <span id="headerName">User</span>
+              <b aria-hidden="true">⌄</b>
+            </button>
+            <div id="userMenu" class="user-menu hidden" role="menu">
+              <small id="menuEmail"></small>
+              <button id="signOutBtn" role="menuitem">Sign out</button>
+            </div>
           </div>
         </div>
       </header>
@@ -107,6 +132,7 @@
         </div>
 
         <div id="dailyEmpty" class="empty hidden">
+          <img class="empty-asset" src="/assets/empty-reading.png" alt="No reading yet" />
           <span class="empty-index">01</span>
           <h3>Chưa có Daily Reading</h3>
           <p>Tạo một bộ bài dựa trên Reading Level, roadmap và Difficult Words của bạn.</p>
@@ -205,7 +231,7 @@
 
   <section id="placementOverlay" class="overlay hidden">
     <div id="placementIntro" class="modal-card center-card">
-      <div class="logo" aria-hidden="true">S</div>
+      <img class="panel-brand" src="/assets/app-icon.png" alt="SpeakUp app icon" />
       <span class="eyebrow">First-time setup</span>
       <h1>Reading Placement</h1>
       <p>Bạn sẽ đọc 4 đoạn ngắn từ dễ đến khó. SpeakUp chỉ đánh giá reading aloud: pronunciation, fluency, completeness và intonation.</p>
@@ -263,7 +289,7 @@
             <div id="resultCircle" class="circle"><b id="resultOverall">0</b><small>/100</small></div>
             <div class="result-grid"><div><small>Pronunciation</small><b id="resultPron">0</b></div><div><small>Fluency</small><b id="resultFlu">0</b></div><div><small>Completeness</small><b id="resultComp">0</b></div><div><small>Intonation</small><b id="resultInt">0</b></div><div><small>Reading speed</small><b><span id="resultWpm">0</span> WPM</b></div></div>
           </div>
-          <div class="coach"><b>AI</b><div><small>Reading coach</small><p id="resultSummary">-</p></div></div>
+          <div class="coach"><img class="coach-avatar" src="/assets/ai-coach.png" alt="AI Coach" /><div><small>Reading coach</small><p id="resultSummary">-</p></div></div>
           <div class="advice-grid"><div><small>Ưu tiên</small><p id="resultPriority">-</p></div><div><small>Luyện lại</small><p id="resultTip">-</p></div></div>
           <div class="recognized"><small>Gemini nghe được</small><p id="resultRecognized">-</p></div>
           <div class="result-actions"><button id="retryPracticeBtn" class="soft">Đọc lại</button><button id="donePracticeBtn" class="primary">Hoàn tất</button></div>

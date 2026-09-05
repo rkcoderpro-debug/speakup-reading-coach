@@ -7,7 +7,7 @@ const placementSamples=[
  {difficulty:"Challenge",text:"Although scientific discoveries can appear sudden, most of them are built on years of careful observation, repeated experiments, and collaboration. Reading a complex explanation aloud requires clear pronunciation, sensible pauses, and enough confidence to keep the sentence flowing naturally."}
 ];
 const availableTopics=["Technology","Science","Daily Life","University","History","Travel","Gaming","Business","Nature","Space"];
-const state={config:null,supabase:null,session:null,user:null,profile:null,plan:null,dailyLesson:null,dailyPassages:[],dailyAttemptPassageIds:new Set(),mediaRecorder:null,mediaStream:null,chunks:[],blob:null,blobUrl:null,mimeType:"audio/webm",recording:false,timerId:null,timerStart:0,recordedDuration:0,placementIndex:0,practicePassage:null,practiceMode:"daily",lastAssessment:null};
+const state={config:null,supabase:null,session:null,user:null,profile:null,plan:null,dailyLesson:null,dailyPassages:[],dailyAttemptPassageIds:new Set(),mediaRecorder:null,mediaStream:null,chunks:[],blob:null,blobUrl:null,mimeType:"audio/webm",recording:false,timerId:null,timerStart:0,recordedDuration:0,placementIndex:0,practicePassage:null,practiceMode:"daily",lastAssessment:null,theme:"dark"};
 const $=id=>document.getElementById(id); const show=el=>el?.classList.remove("hidden"); const hide=el=>el?.classList.add("hidden");
 function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
 function dayBounds(){const s=new Date();s.setHours(0,0,0,0);const e=new Date(s);e.setDate(e.getDate()+1);return [s.toISOString(),e.toISOString()]}
@@ -16,14 +16,21 @@ function greeting(){const h=new Date().getHours();return h<12?"Good morning":h<1
 function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
 function notice(msg,ok=false){const el=$("globalNotice");el.textContent=msg;el.className=`notice${ok?" success":""}`;show(el);clearTimeout(notice.t);notice.t=setTimeout(()=>hide(el),5200)}
 function status(id,msg,ok=false){const el=$(id);if(!msg){hide(el);el.textContent="";return}el.textContent=msg;el.className=id==="practiceStatus"?`notice${ok?" success":""}`:`error${ok?" success":""}`;show(el)}
+const THEMES=["light","dark","glass"];
+function themeLabel(name){return name==="glass"?"LIQUID GLASS":name.toUpperCase()}
+function applyTheme(theme){const safe=THEMES.includes(theme)?theme:"dark";state.theme=safe;document.body.dataset.theme=safe;localStorage.setItem("speakup-theme",safe);document.querySelectorAll("[data-theme-choice]").forEach(btn=>{const on=btn.dataset.themeChoice===safe;btn.classList.toggle("active",on);btn.setAttribute("aria-pressed",on?"true":"false")})}
+function initTheme(){const stored=localStorage.getItem("speakup-theme");const system=window.matchMedia?.("(prefers-color-scheme: dark)").matches?"dark":"light";applyTheme(stored||system)}
+function emptyCard(image,title,text){return `<div class="empty-card"><img src="${image}" alt="${esc(title)}"><h3>${esc(title)}</h3><p>${esc(text)}</p></div>`}
+function closeUserMenuIfOutside(e){const menu=$("userMenu"),btn=$("userMenuBtn");if(!menu||menu.classList.contains("hidden"))return;if(!menu.contains(e.target)&&!btn.contains(e.target)){hide(menu);btn.setAttribute("aria-expanded","false")}}
+
 async function api(path,opt={}){const session=(await state.supabase.auth.getSession()).data.session;if(!session?.access_token)throw new Error("Bạn chưa đăng nhập.");const headers={...(opt.headers||{}),Authorization:`Bearer ${session.access_token}`};if(opt.body)headers["Content-Type"]="application/json";const r=await fetch(path,{...opt,headers});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||d.detail||`HTTP ${r.status}`);return d}
 
-async function boot(){try{state.config=await(await fetch("/api/config")).json();if(!state.config.supabaseConfigured)throw new Error("Supabase chưa được cấu hình trong .env.");state.supabase=createClient(state.config.supabaseUrl,state.config.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});state.supabase.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>handleSession(s),0)});const {data:{session}}=await state.supabase.auth.getSession();await handleSession(session)}catch(e){console.error(e);hide($("loadingScreen"));show($("authScreen"));status("authError",`${e.message} Xem SETUP_SUPABASE.md.`);$("googleLoginBtn").disabled=true}}
+async function boot(){try{initTheme();state.config=await(await fetch("/api/config")).json();if(!state.config.supabaseConfigured)throw new Error("Supabase chưa được cấu hình trong .env.");state.supabase=createClient(state.config.supabaseUrl,state.config.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});state.supabase.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>handleSession(s),0)});const {data:{session}}=await state.supabase.auth.getSession();await handleSession(session)}catch(e){console.error(e);hide($("loadingScreen"));show($("authScreen"));status("authError",`${e.message} Xem SETUP_SUPABASE.md.`);$("googleLoginBtn").disabled=true}}
 async function handleSession(session){state.session=session;state.user=session?.user||null;if(!state.user){hide($("loadingScreen"));hide($("appShell"));hide($("placementOverlay"));show($("authScreen"));return}try{await ensureProfile();renderUser();renderMetrics();hide($("loadingScreen"));hide($("authScreen"));if(!state.profile.onboarding_completed){hide($("appShell"));show($("placementOverlay"));show($("placementIntro"));hide($("placementTest"));hide($("placementFinish"));return}hide($("placementOverlay"));show($("appShell"));await loadPlan();await showPage("today")}catch(e){console.error(e);hide($("loadingScreen"));show($("authScreen"));status("authError",e.message)}}
 async function signInGoogle(){status("authError","");const {error}=await state.supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin}});if(error)status("authError",error.message)}
 async function ensureProfile(){let {data,error}=await state.supabase.from("profiles").select("*").eq("user_id",state.user.id).maybeSingle();if(error)throw error;if(!data){const row={user_id:state.user.id,display_name:state.user.user_metadata?.full_name||state.user.user_metadata?.name||state.user.email?.split("@")[0]||"Reader",avatar_url:state.user.user_metadata?.avatar_url||state.user.user_metadata?.picture||""};const r=await state.supabase.from("profiles").insert(row).select().single();if(r.error)throw r.error;data=r.data}state.profile=data}
 async function refreshProfile(){const {data,error}=await state.supabase.from("profiles").select("*").eq("user_id",state.user.id).single();if(error)throw error;state.profile=data;renderMetrics();renderUser()}
-function renderUser(){const n=state.profile?.display_name||state.user?.user_metadata?.full_name||"Reader",email=state.user?.email||"",av=state.profile?.avatar_url||state.user?.user_metadata?.avatar_url||state.user?.user_metadata?.picture||"";$("headerName").textContent=n.split(" ")[0];$("menuEmail").textContent=email;$("profileName").textContent=n;$("profileEmail").textContent=email;for(const id of ["headerAvatar","profileAvatar"]){$(id).src=av||"data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="}$("welcomeTitle").textContent=`${greeting()}, ${n.split(" ")[0]}`}
+function renderUser(){const n=state.profile?.display_name||state.user?.user_metadata?.full_name||"Reader",email=state.user?.email||"",av=state.profile?.avatar_url||state.user?.user_metadata?.avatar_url||state.user?.user_metadata?.picture||"";$("headerName").textContent=n.split(" ")[0];$("menuEmail").textContent=email;$("profileName").textContent=n;$("profileEmail").textContent=email;for(const id of ["headerAvatar","profileAvatar"]){$(id).src=av||"/assets/ai-coach.png"}$("welcomeTitle").textContent=`${greeting()}, ${n.split(" ")[0]}`;$("welcomeSub").textContent=`You're in ${themeLabel(state.theme)} mode. Keep your streak moving today.`}
 function renderMetrics(){const p=state.profile||{};$("sideStreak").textContent=p.current_streak||0;$("sideLevel").textContent=(p.reading_level||"-").replace("Upper Intermediate","Upper-Int.");$("todayLevel").textContent=p.reading_level||"-";for(const [a,b,c] of [["homePron","homePronBar","pronunciation_score"],["homeFlu","homeFluBar","fluency_score"],["homeInt","homeIntBar","intonation_score"]]){$(a).textContent=p[c]||0;$(b).style.width=`${p[c]||0}%`}$("profileLevel").textContent=p.reading_level||"-";$("profileStreak").textContent=`${p.current_streak||0} days`;$("profileWords").textContent=Number(p.total_words_read||0).toLocaleString();$("dailyGoalSelect").value=String(p.daily_goal||3)}
 async function loadPlan(){const {data,error}=await state.supabase.from("reading_plans").select("*").eq("user_id",state.user.id).eq("active",true).order("created_at",{ascending:false}).limit(1).maybeSingle();if(error)throw error;state.plan=data||null;renderRoadmap()}
 function renderRoadmap(){const plan=state.plan,summary=plan?.summary_vi||plan?.plan_json?.summary_vi||"Your personalized roadmap will appear here.";$("roadmapSummary").textContent=summary;const days=Array.isArray(plan?.plan_json?.days)?plan.plan_json.days:[],box=$("roadmapDays");box.innerHTML="";let idx=-1;if(plan?.start_date){const a=new Date(`${plan.start_date}T12:00:00`),b=new Date(`${localDate()}T12:00:00`);idx=Math.max(0,Math.round((b-a)/86400000))%14}days.forEach((d,i)=>{const el=document.createElement("div");el.className=`roadmap-day${i===idx?" today":""}`;el.innerHTML=`<b>${esc(d.day??i+1)}</b><div><strong>${esc(d.focus||"Reading practice")}</strong><p>${esc(d.goal_vi||"")}</p></div>`;box.appendChild(el)});const cur=days[idx]||days[0];$("roadmapTodayTitle").textContent=cur?.focus||"Your plan";$("roadmapTodayText").textContent=cur?.goal_vi||summary}
@@ -36,187 +43,34 @@ function renderDaily(){$("dailyFocus").textContent=state.dailyLesson?.focus_titl
 function passageHtml(p){return `<div class="passage-card"><div class="passage-top"><span class="passage-num">${esc((p.source||"generated").toUpperCase())}</span></div><h3>${esc(p.title)}</h3><p class="passage-preview">${esc(p.content)}</p><div class="passage-info"><span>${esc(p.topic)}</span><span>${p.word_count} words</span><span>${esc(p.level)}</span></div><button class="primary">Start reading </button></div>`}
 async function generateCustom(focusWords=[]){const btn=$("generateCustomBtn"),old=btn.textContent;btn.disabled=true;btn.textContent="Generating...";try{const d=await api("/api/passage/generate",{method:"POST",body:JSON.stringify({topic:$("customTopic").value,length:$("customLength").value,focusWords})});show($("customResult"));$("customPassageCard").innerHTML=passageHtml(d.passage);$("customPassageCard").querySelector("button").onclick=()=>openPractice(d.passage,focusWords.length?"review":"custom");notice(`Đã tạo bài bằng ${d.used_model}.`,true);await loadLibrary()}catch(e){notice(e.message)}finally{btn.disabled=false;btn.textContent=old}}
 async function loadLibrary(){const {data,error}=await state.supabase.from("reading_passages").select("*").eq("user_id",state.user.id).order("created_at",{ascending:false}).limit(12);if(error){notice(error.message);return}const c=$("recentLibrary");c.innerHTML="";(data||[]).forEach(p=>{const row=document.createElement("div");row.className="library-row";row.innerHTML=`<div><h4>${esc(p.title)}</h4><p>${esc(p.topic)} / ${p.word_count} words / ${esc(p.level)}</p></div><button>Read again</button>`;row.querySelector("button").onclick=()=>openPractice(p,p.source==="review"?"review":"custom");c.appendChild(row)});if(!(data||[]).length)c.innerHTML='<div class="card empty"><p>Chưa có bài trong library.</p></div>'}
-async function loadWords(){const {data,error}=await state.supabase.from("word_progress").select("*").eq("user_id",state.user.id).order("average_score",{ascending:true}).limit(80);if(error){notice(error.message);return}const rows=data||[];$("weakCount").textContent=rows.filter(x=>x.status==="weak").length;$("improvingCount").textContent=rows.filter(x=>x.status==="improving").length;$("strongCount").textContent=rows.filter(x=>x.status==="strong").length;const c=$("wordBank");c.innerHTML="";const list=rows.filter(x=>x.status!=="strong"||x.attempts>=2).slice(0,36);list.forEach(r=>{const el=document.createElement("div");el.className=`word-card ${r.status}`;el.innerHTML=`<div><h3>${esc(r.word)}</h3><span class="score">${Math.round(r.average_score)} / 100</span></div><div class="word-meta">${r.attempts} sessions / best ${r.best_score} / review ${r.next_review||"-"}</div><button>Generate a reading with this word</button>`;el.querySelector("button").onclick=async()=>{await showPage("read");$("customLength").value="quick";await generateCustom([r.word])};c.appendChild(el)});if(!list.length)c.innerHTML='<div class="card empty"><h3>Chưa có Difficult Words</h3><p>Đọc vài bài trước. Các từ cần luyện sẽ tự xuất hiện ở đây.</p></div>'}
-
-async function loadProgress() {
+async function loadWords(){const {data,error}=await state.supabase.from("word_progress").select("*").eq("user_id",state.user.id).order("average_score",{ascending:true}).limit(80);if(error){notice(error.message);return}const rows=data||[];$("weakCount").textContent=rows.filter(x=>x.status==="weak").length;$("improvingCount").textContent=rows.filter(x=>x.status==="improving").length;$("strongCount").textContent=rows.filter(x=>x.status==="strong").length;const c=$("wordBank");c.innerHTML="";const list=rows.filter(x=>x.status!=="strong"||x.attempts>=2).slice(0,36);list.forEach(r=>{const el=document.createElement("div");el.className=`word-card ${r.status}`;el.innerHTML=`<div><h3>${esc(r.word)}</h3><span class="score">${Math.round(r.average_score)} / 100</span></div><div class="word-meta">${r.attempts} sessions / best ${r.best_score} / review ${r.next_review||"-"}</div><button>Generate a reading with this word</button>`;el.querySelector("button").onclick=async()=>{await showPage("read");$("customLength").value="quick";await generateCustom([r.word])};c.appendChild(el)});if(!list.length)c.innerHTML=emptyCard('/assets/empty-words.png','Chưa có Difficult Words','Đọc vài bài trước. Các từ cần luyện sẽ tự xuất hiện ở đây.')}
+async function loadProgress(){
   await refreshProfile();
-
-  const p = state.profile;
-
-  $("progressOverall").textContent =
-    p.overall_score || 0;
-
-  $("progressPron").textContent =
-    p.pronunciation_score || 0;
-
-  $("progressFlu").textContent =
-    p.fluency_score || 0;
-
-  $("progressInt").textContent =
-    p.intonation_score || 0;
-
-  $("progressWpm").textContent =
-    Math.round(Number(p.avg_wpm || 0));
-
-  const { data, error } = await state.supabase
-    .from("reading_attempts")
-    .select("*")
-    .eq("user_id", state.user.id)
-    .neq("mode", "placement")
-    .order("created_at", {
-      ascending: false
-    })
-    .limit(40);
-
-  if (error) {
-    notice(error.message);
-    return;
-  }
-
-  const rows = data || [];
-
-  const c = $("attemptHistory");
-
-  c.innerHTML = "";
-
-  rows.slice(0, 12).forEach((r) => {
-    const el = document.createElement("div");
-
-    el.className =
-      "history-item history-clickable";
-
-    // Accessibility
-    el.tabIndex = 0;
-
-    el.setAttribute(
-      "role",
-      "button"
-    );
-
-    el.setAttribute(
-      "aria-label",
-      `Xem kết quả reading ngày ${new Date(
-        r.created_at
-      ).toLocaleString()}`
-    );
-
-    const text =
-      r.reference_text || "";
-
-    const preview =
-      text.slice(0, 75);
-
-    el.innerHTML = `
-      <div>
-        <b>
-          ${esc(preview)}
-          ${text.length > 75 ? "..." : ""}
-        </b>
-
-        <p>
-          ${new Date(r.created_at).toLocaleString()}
-          /
-          ${Math.round(Number(r.wpm || 0))} WPM
-          /
-          ${esc(r.mode)}
-        </p>
-      </div>
-
-      <span class="history-score">
-        ${r.overall_score}
-
-        <small>
-          View
-        </small>
-      </span>
-    `;
-
-    // Click bằng chuột.
-    el.addEventListener(
-      "click",
-      () => openHistoryAttempt(r)
-    );
-
-    // Enter / Space cũng mở được.
-    el.addEventListener(
-      "keydown",
-      (e) => {
-        if (
-          e.key === "Enter" ||
-          e.key === " "
-        ) {
-          e.preventDefault();
-          openHistoryAttempt(r);
-        }
-      }
-    );
-
-    c.appendChild(el);
+  const p=state.profile;
+  $("progressOverall").textContent=p.overall_score||0;
+  $("progressPron").textContent=p.pronunciation_score||0;
+  $("progressFlu").textContent=p.fluency_score||0;
+  $("progressInt").textContent=p.intonation_score||0;
+  $("progressWpm").textContent=Math.round(Number(p.avg_wpm||0));
+  const {data,error}=await state.supabase.from("reading_attempts").select("*").eq("user_id",state.user.id).neq("mode","placement").order("created_at",{ascending:false}).limit(40);
+  if(error){notice(error.message);return}
+  const rows=data||[],c=$("attemptHistory");
+  c.innerHTML="";
+  rows.slice(0,12).forEach(r=>{
+    const el=document.createElement("button");
+    el.type="button";
+    el.className="history-item";
+    const t=(r.reference_text||"").slice(0,75);
+    el.innerHTML=`<div><b>${esc(t)}${(r.reference_text||"").length>75?"...":""}</b><p>${new Date(r.created_at).toLocaleString()} / ${Math.round(Number(r.wpm||0))} WPM / ${esc(r.mode)} · click để xem</p></div><span>${Number(r.overall_score||0)}</span>`;
+    el.onclick=()=>openHistoryAttempt(r);
+    c.appendChild(el)
   });
-
-  if (!rows.length) {
-    c.innerHTML = `
-      <p>
-        Chưa có lịch sử đọc.
-      </p>
-    `;
-  }
-
-  // =============================
-  // THIS WEEK
-  // =============================
-
-  const week = rows.filter(
-    (r) =>
-      Date.now() -
-        new Date(r.created_at).getTime()
-      <=
-      7 * 86400000
-  );
-
-  $("weekAttempts").textContent =
-    week.length;
-
-  $("weekWords").textContent =
-    week
-      .reduce(
-        (sum, r) =>
-          sum +
-          String(r.reference_text || "")
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean)
-            .length,
-        0
-      )
-      .toLocaleString();
-
-  $("weekMinutes").textContent =
-    Math.round(
-      week.reduce(
-        (sum, r) =>
-          sum +
-          Number(
-            r.audio_duration_seconds || 0
-          ),
-        0
-      ) / 60
-    );
-
-  $("weekAvg").textContent =
-    week.length
-      ? Math.round(
-          week.reduce(
-            (sum, r) =>
-              sum +
-              Number(
-                r.overall_score || 0
-              ),
-            0
-          ) /
-            week.length
-        )
-      : 0;
+  if(!rows.length){c.innerHTML=emptyCard('/assets/empty-history.png','Chưa có Reading History','Đọc vài bài sau placement để xem lịch sử, điểm số và xem lại từng lần luyện.');}
+  const week=rows.filter(r=>Date.now()-new Date(r.created_at).getTime()<=7*86400000);
+  $("weekAttempts").textContent=week.length;
+  $("weekWords").textContent=week.reduce((s,r)=>s+String(r.reference_text||"").trim().split(/\s+/).filter(Boolean).length,0).toLocaleString();
+  $("weekMinutes").textContent=Math.round(week.reduce((s,r)=>s+Number(r.audio_duration_seconds||0),0)/60);
+  $("weekAvg").textContent=week.length?Math.round(week.reduce((s,r)=>s+Number(r.overall_score||0),0)/week.length):0;
 }
 
 function renderProfilePage(){renderUser();renderMetrics();renderRoadmap();const selected=new Set(state.profile?.selected_topics||[]),c=$("topicChecks");c.innerHTML="";availableTopics.forEach(t=>{const l=document.createElement("label");l.className="topic";l.innerHTML=`<input type="checkbox" value="${esc(t)}" ${selected.has(t)?"checked":""}> ${esc(t)}`;c.appendChild(l)})}
@@ -237,74 +91,24 @@ async function submitPlacement(){if(!state.blob){status("placementStatus","Bạn
 async function nextPlacement(){if(state.placementIndex<3){state.placementIndex++;renderPlacement();return}const btn=$("placementNextBtn");btn.disabled=true;btn.textContent="Đang xây lộ trình...";try{const d=await api("/api/placement/finish",{method:"POST",body:JSON.stringify({localDate:localDate()})});state.profile=d.profile;state.plan=d.plan;hide($("placementTest"));show($("placementFinish"));$("finishLevel").textContent=d.level;$("finishSummary").textContent=d.plan?.summary_vi||d.plan?.plan_json?.summary_vi||"Your roadmap is ready.";$("finishPron").textContent=d.scores.pronunciation;$("finishFlu").textContent=d.scores.fluency;$("finishInt").textContent=d.scores.intonation;$("finishComp").textContent=d.scores.completeness}catch(e){status("placementStatus",e.message);btn.disabled=false;btn.textContent="Thử hoàn tất lại"}}
 async function enterAfterPlacement(){hide($("placementOverlay"));show($("appShell"));renderUser();renderMetrics();renderRoadmap();await showPage("today")}
 
-
-function getPracticeRecorderWrap() {
-  const btn = $("practiceRecordBtn");
-
-  return (
-    btn?.closest(".practice-recorder, .recorder, .practice-record") ||
-    btn?.parentElement ||
-    null
-  );
-}
-
-function setPracticeRecorderVisible(visible) {
-  const wrap = getPracticeRecorderWrap();
-
-  if (wrap) {
-    if (visible) show(wrap);
-    else hide(wrap);
-  }
-
-  if (!visible) {
-    hide($("practiceRecordedActions"));
-  }
-}
-
-function openPractice(p, mode = "daily") {
-  state.practicePassage = p;
-  state.practiceMode = mode;
-
-  // Khi mở bài luyện bình thường thì bật lại recorder.
-  setPracticeRecorderVisible(true);
-
-  $("practiceTitle").textContent =
-    p.title || "Reading practice";
-
-  $("practiceMeta").textContent =
-    `${p.topic || "Reading"} / ` +
-    `${p.word_count || String(p.content || "").split(/\s+/).length} WORDS / ` +
-    `${p.level || state.profile.reading_level}`;
-
-  $("practiceText").textContent = p.content;
-
-  $("practiceRecordTitle").textContent =
-    "Nhấn để bắt đầu đọc";
-
-  $("practiceRecordHint").textContent =
-    "Đọc toàn bộ đoạn. Bấm lần nữa để dừng.";
-
-  $("retryPracticeBtn").textContent =
-    "Đọc lại";
-
-  $("donePracticeBtn").textContent =
-    "Hoàn tất";
-
-  resetRec(
-    $("practiceAudio"),
-    $("practiceRecordedActions"),
-    $("practiceTimer")
-  );
-
+function openPractice(p,mode="daily"){
+  state.practicePassage=p;
+  state.practiceMode=mode;
+  $("practiceTitle").textContent=p.title||"Reading practice";
+  $("practiceMeta").textContent=`${p.topic||"Reading"} / ${p.word_count||String(p.content||"").split(/\s+/).length} WORDS / ${p.level||state.profile.reading_level}`;
+  $("practiceText").textContent=p.content;
+  $("practiceRecordTitle").textContent="Nhấn để bắt đầu đọc";
+  $("practiceRecordHint").textContent="Đọc toàn bộ đoạn. Bấm lần nữa để dừng.";
+  $("retryPracticeBtn").textContent="Đọc lại";
+  $("donePracticeBtn").textContent="Hoàn tất";
+  resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));
   hide($("practiceResults"));
   hide($("wordDetail"));
-
-  status("practiceStatus", "");
-
+  status("practiceStatus","");
   show($("practiceModal"));
-
-  document.body.style.overflow = "hidden";
+  document.body.style.overflow="hidden";
 }
+
 function closePractice(){resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));hide($("practiceModal"));document.body.style.overflow=""}
 
 function tokens(text) {
@@ -360,146 +164,71 @@ function highlight(text, results) {
       };
     });
 }
-function openHistoryAttempt(r) {
-  const text = r.reference_text || "";
+function openHistoryAttempt(r){
+  const text=r.reference_text||"";
+  const words=Array.isArray(r.words)?r.words:[];
+  const wordCount=text.trim().split(/\s+/).filter(Boolean).length;
 
-  const words = Array.isArray(r.words)
-    ? r.words
-    : [];
-
-  const wordCount = text
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .length;
-
-  // Tạo passage tạm từ dữ liệu lịch sử.
-  // Nhờ vậy nếu bấm "Practice again" thì có thể đọc lại đúng bài cũ.
-  state.practicePassage = {
-    id: r.passage_id || null,
-    title: "Reading history",
-    topic: r.mode || "Reading",
-    word_count: wordCount,
-    level: state.profile?.reading_level || "Reading",
-    content: text
+  state.practicePassage={
+    id:r.passage_id||null,
+    title:"Reading history",
+    topic:r.mode||"Reading",
+    word_count:wordCount,
+    level:state.profile?.reading_level||"Reading",
+    content:text
   };
+  state.practiceMode=r.mode||"daily";
 
-  state.practiceMode = r.mode || "daily";
+  resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));
 
-  // Dọn recording hiện tại nếu có.
-  resetRec(
-    $("practiceAudio"),
-    $("practiceRecordedActions"),
-    $("practiceTimer")
-  );
+  const date=new Date(r.created_at);
+  $("practiceTitle").textContent="Reading history";
+  $("practiceMeta").textContent=`${date.toLocaleString()} / ${wordCount} WORDS / ${Math.round(Number(r.wpm||0))} WPM / ${String(r.mode||"reading").toUpperCase()}`;
 
-  // History chỉ để xem kết quả nên ẩn recorder.
-  setPracticeRecorderVisible(false);
-
-  const date = new Date(r.created_at);
-
-  $("practiceTitle").textContent =
-    "Reading history";
-
-  $("practiceMeta").textContent =
-    `${date.toLocaleString()} / ` +
-    `${wordCount} WORDS / ` +
-    `${Math.round(Number(r.wpm || 0))} WPM / ` +
-    `${String(r.mode || "reading").toUpperCase()}`;
-
-  // Hiển thị lại toàn bộ passage cùng màu từng từ.
-  highlight(text, words);
-
+  highlight(text,words);
   hide($("wordDetail"));
 
-  // Score
-  $("resultOverall").textContent =
-    r.overall_score ?? 0;
+  $("resultOverall").textContent=r.overall_score??0;
+  $("resultCircle").style.setProperty("--score",r.overall_score??0);
+  $("resultPron").textContent=r.pronunciation_score??0;
+  $("resultFlu").textContent=r.fluency_score??0;
+  $("resultComp").textContent=r.completeness_score??0;
+  $("resultInt").textContent=r.intonation_score??0;
+  $("resultWpm").textContent=Math.round(Number(r.wpm||0));
 
-  $("resultCircle").style.setProperty(
-    "--score",
-    r.overall_score ?? 0
-  );
+  $("resultSummary").textContent=r.summary_vi||"Không có nhận xét.";
+  $("resultPriority").textContent=r.main_priority_vi||"-";
+  $("resultTip").textContent=r.practice_tip_vi||"-";
+  $("resultRecognized").textContent=r.recognized_text||"-";
 
-  $("resultPron").textContent =
-    r.pronunciation_score ?? 0;
+  $("practiceRecordTitle").textContent="Kết quả lần đọc đã lưu";
+  $("practiceRecordHint").textContent="Bấm Đọc lại để luyện lại đúng bài này.";
+  $("retryPracticeBtn").textContent="Đọc lại";
+  $("donePracticeBtn").textContent="Đóng";
 
-  $("resultFlu").textContent =
-    r.fluency_score ?? 0;
-
-  $("resultComp").textContent =
-    r.completeness_score ?? 0;
-
-  $("resultInt").textContent =
-    r.intonation_score ?? 0;
-
-  $("resultWpm").textContent =
-    Math.round(Number(r.wpm || 0));
-
-  // AI feedback
-  $("resultSummary").textContent =
-    r.summary_vi || "Không có nhận xét.";
-
-  $("resultPriority").textContent =
-    r.main_priority_vi || "—";
-
-  $("resultTip").textContent =
-    r.practice_tip_vi || "—";
-
-  $("resultRecognized").textContent =
-    r.recognized_text || "—";
-
-  status("practiceStatus", "");
-
-  // Đổi nút cho đúng context history.
-  $("retryPracticeBtn").textContent =
-    "Practice again";
-
-  $("donePracticeBtn").textContent =
-    "Close";
-
+  hide($("practiceRecordedActions"));
   show($("practiceResults"));
+  status("practiceStatus","");
   show($("practiceModal"));
-
-  document.body.style.overflow = "hidden";
+  document.body.style.overflow="hidden";
 }
+
 async function submitPractice(){if(!state.blob||!state.practicePassage){status("practiceStatus","Bạn chưa có bản ghi âm.");return}const btn=$("practiceSubmitBtn"),old=btn.textContent;btn.disabled=true;btn.textContent="Gemini đang nghe...";status("practiceStatus","Đang phân tích pronunciation, fluency và từng từ...");try{const p=state.practicePassage,d=await api("/api/assess",{method:"POST",body:JSON.stringify({passageId:p.id||null,referenceText:p.content,audioBase64:await b64(state.blob),mimeType:state.mimeType,durationSeconds:state.recordedDuration,mode:state.practiceMode,localDate:localDate()})});state.lastAssessment=d;highlight(p.content,d.assessment.words);$("resultOverall").textContent=d.assessment.overall_score;$("resultCircle").style.setProperty("--score",d.assessment.overall_score);$("resultPron").textContent=d.assessment.pronunciation_score;$("resultFlu").textContent=d.assessment.fluency_score;$("resultComp").textContent=d.assessment.completeness_score;$("resultInt").textContent=d.assessment.intonation_score;$("resultWpm").textContent=Math.round(d.wpm||0);$("resultSummary").textContent=d.assessment.summary_vi;$("resultPriority").textContent=d.assessment.main_priority_vi;$("resultTip").textContent=d.assessment.practice_tip_vi;$("resultRecognized").textContent=d.assessment.recognized_text||"-";hide($("practiceRecordedActions"));show($("practiceResults"));status("practiceStatus",`Chấm thành công bằng ${d.used_model}.`,true);await refreshProfile()}catch(e){status("practiceStatus",e.message)}finally{btn.disabled=false;btn.textContent=old}}
-
-function retryPractice() {
-  // Nếu đang xem history và muốn đọc lại,
-  // bật recorder trở lại.
-  setPracticeRecorderVisible(true);
-
-  $("practiceText").textContent =
-    state.practicePassage.content;
-
+function retryPractice(){
+  $("practiceText").textContent=state.practicePassage.content;
   hide($("practiceResults"));
   hide($("wordDetail"));
-
-  status("practiceStatus", "");
-
-  resetRec(
-    $("practiceAudio"),
-    $("practiceRecordedActions"),
-    $("practiceTimer")
-  );
-
-  $("practiceRecordTitle").textContent =
-    "Nhấn để đọc lại";
-
-  $("practiceRecordHint").textContent =
-    "Cố gắng cải thiện những phần được đánh dấu.";
-
-  $("retryPracticeBtn").textContent =
-    "Đọc lại";
-
-  $("donePracticeBtn").textContent =
-    "Hoàn tất";
+  status("practiceStatus","");
+  resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));
+  $("practiceRecordTitle").textContent="Nhấn để đọc lại";
+  $("practiceRecordHint").textContent="Cố gắng cải thiện những phần được đánh dấu.";
+  $("retryPracticeBtn").textContent="Đọc lại";
+  $("donePracticeBtn").textContent="Hoàn tất";
 }
 
 async function finishPractice(){closePractice();await refreshProfile();const name=document.querySelector(".page:not(.hidden)")?.id?.replace("page-","");if(name)await showPage(name)}
 
-$("googleLoginBtn").onclick=signInGoogle;$("userMenuBtn").onclick=()=>$("userMenu").classList.toggle("hidden");$("signOutBtn").onclick=()=>state.supabase.auth.signOut();document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>showPage(b.dataset.page));document.querySelectorAll("[data-go-page]").forEach(b=>b.onclick=()=>showPage(b.dataset.goPage));$("generateDailyBtn").onclick=generateDaily;$("generateCustomBtn").onclick=()=>generateCustom();$("saveProfileBtn").onclick=savePreferences;
+$("googleLoginBtn").onclick=signInGoogle;$("userMenuBtn").onclick=()=>{const open=$("userMenu").classList.toggle("hidden");$("userMenuBtn").setAttribute("aria-expanded",String(!open))};$("signOutBtn").onclick=()=>state.supabase.auth.signOut();document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>showPage(b.dataset.page));document.querySelectorAll("[data-go-page]").forEach(b=>b.onclick=()=>showPage(b.dataset.goPage));document.querySelectorAll("[data-theme-choice]").forEach(b=>b.onclick=()=>applyTheme(b.dataset.themeChoice));document.addEventListener("click",closeUserMenuIfOutside);$("generateDailyBtn").onclick=generateDaily;$("generateCustomBtn").onclick=()=>generateCustom();$("saveProfileBtn").onclick=savePreferences;
 $("startPlacementBtn").onclick=startPlacement;$("placementListenBtn").onclick=()=>speak(placementSamples[state.placementIndex].text);$("placementRecordBtn").onclick=()=>state.recording?stopRec($("placementRecordBtn")):startRec({button:$("placementRecordBtn"),audio:$("placementAudio"),actions:$("placementRecordedActions"),timer:$("placementTimer"),title:$("placementRecordTitle"),hint:$("placementRecordHint")});$("placementSubmitBtn").onclick=submitPlacement;$("placementNextBtn").onclick=nextPlacement;$("enterAppBtn").onclick=enterAfterPlacement;
-$("closePracticeBtn").onclick=closePractice;$("practiceListenBtn").onclick=()=>state.practicePassage&&speak(state.practicePassage.content);$("practiceRecordBtn").onclick=()=>state.recording?stopRec($("practiceRecordBtn")):startRec({button:$("practiceRecordBtn"),audio:$("practiceAudio"),actions:$("practiceRecordedActions"),timer:$("practiceTimer"),title:$("practiceRecordTitle"),hint:$("practiceRecordHint")});$("practiceDiscardBtn").onclick=()=>{resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));$("practiceRecordTitle").textContent="Nhấn để bắt đầu đọc"};$("practiceSubmitBtn").onclick=submitPractice;$("retryPracticeBtn").onclick=retryPractice;$("donePracticeBtn").onclick=finishPractice;window.addEventListener("beforeunload",cleanup);
+$("closePracticeBtn").onclick=closePractice;$("practiceListenBtn").onclick=()=>state.practicePassage&&speak(state.practicePassage.content);$("practiceRecordBtn").onclick=()=>state.recording?stopRec($("practiceRecordBtn")):startRec({button:$("practiceRecordBtn"),audio:$("practiceAudio"),actions:$("practiceRecordedActions"),timer:$("practiceTimer"),title:$("practiceRecordTitle"),hint:$("practiceRecordHint")});$("practiceDiscardBtn").onclick=()=>{resetRec($("practiceAudio"),$("practiceRecordedActions"),$("practiceTimer"));$("practiceRecordTitle").textContent="Nhấn để bắt đầu đọc";$("practiceRecordHint").textContent="Đọc toàn bộ đoạn. Bấm lần nữa để dừng."};$("practiceSubmitBtn").onclick=submitPractice;$("retryPracticeBtn").onclick=retryPractice;$("donePracticeBtn").onclick=finishPractice;window.addEventListener("beforeunload",cleanup);
 boot();
